@@ -1,4 +1,4 @@
-// Fuzzy searching allows for flexibly matching a string with partial input,
+// Package fuzzy searching allows for flexibly matching a string with partial input,
 // useful for filtering data very quickly based on lightweight user input.
 package fuzzy
 
@@ -82,33 +82,37 @@ Outer:
 	return true
 }
 
+type Item interface {
+	FilterValue() string
+}
+
 // Find will return a list of strings in targets that fuzzy matches source.
-func Find(source string, targets []string) []string {
+func Find[T Item](source string, targets []T) []T {
 	return find(source, targets, noopTransformer())
 }
 
 // FindFold is a case-insensitive version of Find.
-func FindFold(source string, targets []string) []string {
+func FindFold[T Item](source string, targets []T) []T {
 	return find(source, targets, foldTransformer())
 }
 
 // FindNormalized is a unicode-normalized version of Find.
-func FindNormalized(source string, targets []string) []string {
+func FindNormalized[T Item](source string, targets []T) []T {
 	return find(source, targets, normalizeTransformer())
 }
 
 // FindNormalizedFold is a unicode-normalized and case-insensitive version of Find.
-func FindNormalizedFold(source string, targets []string) []string {
+func FindNormalizedFold[T Item](source string, targets []T) []T {
 	return find(source, targets, normalizedFoldTransformer())
 }
 
-func find(source string, targets []string, transformer transform.Transformer) []string {
+func find[T Item](source string, targets []T, transformer transform.Transformer) []T {
 	sourceT := stringTransform(source, transformer)
 
-	var matches []string
+	var matches []T
 
 	for _, target := range targets {
-		targetT := stringTransform(target, transformer)
+		targetT := stringTransform(target.FilterValue(), transformer)
 		if matchTransformed(sourceT, targetT) {
 			matches = append(matches, target)
 		}
@@ -179,66 +183,57 @@ Outer:
 
 // RankFind is similar to Find, except it will also rank all matches using
 // Levenshtein distance.
-func RankFind(source string, targets []string) Ranks {
+func RankFind[T Item](source string, targets []T) []Rank[T] {
 	return rankFind(source, targets, noopTransformer())
 }
 
 // RankFindFold is a case-insensitive version of RankFind.
-func RankFindFold(source string, targets []string) Ranks {
+func RankFindFold[T Item](source string, targets []T) []Rank[T] {
 	return rankFind(source, targets, foldTransformer())
 }
 
 // RankFindNormalized is a unicode-normalized version of RankFind.
-func RankFindNormalized(source string, targets []string) Ranks {
+func RankFindNormalized[T Item](source string, targets []T) []Rank[T] {
 	return rankFind(source, targets, normalizeTransformer())
 }
 
 // RankFindNormalizedFold is a unicode-normalized and case-insensitive version of RankFind.
-func RankFindNormalizedFold(source string, targets []string) Ranks {
+func RankFindNormalizedFold[T Item](source string, targets []T) []Rank[T] {
 	return rankFind(source, targets, normalizedFoldTransformer())
 }
 
-func rankFind(source string, targets []string, transformer transform.Transformer) Ranks {
+func rankFind[T Item](source string, targets []T, transformer transform.Transformer) []Rank[T] {
 	sourceT := stringTransform(source, transformer)
 
-	var r Ranks
+	var r []Rank[T]
 
 	for index, target := range targets {
-		targetT := stringTransform(target, transformer)
+		targetT := stringTransform(target.FilterValue(), transformer)
 		if matchTransformed(sourceT, targetT) {
-			distance := LevenshteinDistance(source, target)
-			r = append(r, Rank{source, target, distance, index})
+			distance := LevenshteinDistance(source, target.FilterValue())
+			r = append(r, Rank[T]{
+				Source:        source,
+				Target:        target,
+				Distance:      distance,
+				OriginalIndex: index,
+			})
 		}
 	}
 	return r
 }
 
-type Rank struct {
+type Rank[T Item] struct {
 	// Source is used as the source for matching.
 	Source string
 
 	// Target is the word matched against.
-	Target string
+	Target T
 
 	// Distance is the Levenshtein distance between Source and Target.
 	Distance int
 
 	// Location of Target in original list
 	OriginalIndex int
-}
-
-type Ranks []Rank
-
-func (r Ranks) Len() int {
-	return len(r)
-}
-
-func (r Ranks) Swap(i, j int) {
-	r[i], r[j] = r[j], r[i]
-}
-
-func (r Ranks) Less(i, j int) bool {
-	return r[i].Distance < r[j].Distance
 }
 
 func stringTransform(s string, t transform.Transformer) (transformed string) {
